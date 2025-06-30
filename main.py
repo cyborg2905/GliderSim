@@ -6,15 +6,15 @@ def alphaFun():
     K_L, K_D, K_L0, K_D0, alpha_d, zeta_d = sp.symbols('K_L K_D K_L0 K_D0 alpha_d zeta_d')
 
     left_hand_side = alpha_d**2 + (K_L/K_D)*sp.tan(sp.rad(zeta_d))*alpha_d + (K_D0/K_D)
-    
-    #Input Values
-    K_D_values = np.full(500, 18) # Drag Coefficients when angle of attack is alpha
-    K_D0_values = np.full(500, 109) # Drag Coefficients when angle of attack is 0
-    K_L0_values = np.full(500, 0) # Lift Coefficients when angle of attack is 0
-    K_L_values = np.full(500, 306) # Lift Coefficients when angle of attack is alpha
-    zeta_d_values = np.linspace(-45, 45, 500) # Glide angle
+
+    K_D_values = np.full(500, 18)
+    K_D0_values = np.full(500, 109)
+    K_L0_values = np.full(500, 0)
+    K_L_values = np.full(500, 306)
+    zeta_d_values = np.linspace(-45, 45, 500)
 
     alpha_values = []
+    glide_values = []
 
     for kd, kd0, kl0, kl, zd in zip(K_D_values, K_D0_values, K_L0_values, K_L_values, zeta_d_values):
         substitution_dict = {
@@ -32,37 +32,38 @@ def alphaFun():
         for sol in solutions:
             numeric_sol = sol.evalf()
             if numeric_sol.is_real and abs(float(numeric_sol)) > 1:
+                glide_values.append(zd)
                 numeric_solutions.append(float(numeric_sol))
 
         alpha_values.append(numeric_solutions)
 
+    glide_angle = np.array(glide_values)
     flat_list = [item for sublist in alpha_values for item in sublist]
+
     print(f"Found {len(flat_list)} alpha_d values.")
-    return flat_list
+    return flat_list, glide_angle
 
 
-def MovableMassPos(alpha_d_values, N):
-    g = 9.81 
+def MovableMassPos(alpha_d_values, glide_angle, N):
+    g = 9.81  # m/s^2
     r_p1d, r_p3d, theta_d, m_bar, m_f3, m_f1, v1_d, v3_d, K_M0, K_M, V_d, alpha_d = sp.symbols(
         'r_p1d r_p3d theta_d m_bar m_f3 m_f1 v1_d v3_d K_M0 K_M V_d alpha_d'
     )
-    
-    right_hand_side = -r_p3d*sp.tan(theta_d) + (
-        (m_f3 - m_f1)*v1_d*v3_d + (K_M0 + K_M*alpha_d)*pow(V_d, 2)
-    ) / (m_bar*g*sp.cos(theta_d))
-    
-    #Input Values
-    r_p3d_values = np.full(N, 0.04) # Parameter of movable mass position along z-axis
-    theta_d_values = np.full(N, 0) # Pitch Angle 
-    m_bar_values = np.full(N, 2) # Mass of movable mass
-    m_f3_values = np.full(N, 14) # Mass coefficient along z-axis
-    m_f1_values = np.full(N, 2)  # Mass  coefficient along x-axis
-    V_d_values = np.linspace(0.1, 0.37, N) # Net Velocity 
-    K_M0_values = np.full(N, 0) # Hydrodynamic Coefficients when angle of attack is 0
-    K_M_values = np.full(N, -36.5) # Hydrodynamic Coefficients when angle of attack is alpha
 
-    # Velocity components
-    alpha_d_rad = np.radians(alpha_d_values)
+    right_hand_side = -r_p3d * sp.tan(theta_d) + (
+        (m_f3 - m_f1) * v1_d * v3_d + (K_M0 + K_M * alpha_d) * pow(V_d, 2)
+    ) / (m_bar * g * sp.cos(theta_d))
+
+    r_p3d_values = np.full(N, 0.04)
+    theta_d_values = glide_angle[:N] - alpha_d_values[:N]
+    m_bar_values = np.full(N, 2)
+    m_f3_values = np.full(N, 14)
+    m_f1_values = np.full(N, 2)
+    V_d_values = np.linspace(0.1, 0.37, N)
+    K_M0_values = np.full(N, 0)
+    K_M_values = np.full(N, -36.5)
+
+    alpha_d_rad = np.radians(alpha_d_values[:N])
     v1_d_values = V_d_values * np.cos(alpha_d_rad)
     v3_d_values = V_d_values * np.sin(alpha_d_rad)
 
@@ -70,7 +71,7 @@ def MovableMassPos(alpha_d_values, N):
 
     for rp3d, td, mbar, mf3, mf1, v1d, v3d, KM0, KM, Vd, ad in zip(
         r_p3d_values, theta_d_values, m_bar_values, m_f3_values, m_f1_values,
-        v1_d_values, v3_d_values, K_M0_values, K_M_values, V_d_values, alpha_d_values
+        v1_d_values, v3_d_values, K_M0_values, K_M_values, V_d_values, alpha_d_values[:N]
     ):
         substitution_dict = {
             r_p3d: rp3d,
@@ -92,16 +93,12 @@ def MovableMassPos(alpha_d_values, N):
     print("Position values computed.")
     return position_values
 
+alpha_values, glide_angle = alphaFun()
+N = len(alpha_values)
+positions = MovableMassPos(alpha_values, glide_angle, N)
 
-alpha_d_values = alphaFun()
-N = len(alpha_d_values)
-positions = MovableMassPos(alpha_d_values, N)
+data = pd.DataFrame({
+    'Angle of Attack': alpha_values,
+    'Moving Mass Positions': positions
+})
 
-# DataFrame creation
-d = {'Angle of Attack': alpha_d_values, 'Moving Mass Positions': positions}
-data = pd.DataFrame(d)
-data.to_csv('C:/Users/mukul/Downloads/alpha_vs_movable_mass.csv', index=False)
-
-
-
-print(data)
