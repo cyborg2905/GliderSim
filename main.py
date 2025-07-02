@@ -2,19 +2,26 @@ import numpy as np
 import sympy as sp
 import pandas as pd
 
+filepath = 'corrected_glider_results.csv'
+
 def alphaFun():
     K_L, K_D, K_L0, K_D0, alpha_d, zeta_d = sp.symbols('K_L K_D K_L0 K_D0 alpha_d zeta_d')
 
     left_hand_side = alpha_d**2 + (K_L/K_D)*sp.tan(sp.rad(zeta_d))*alpha_d + (K_D0/K_D)
 
-    K_D_values = np.full(500, 18)
-    K_D0_values = np.full(500, 109)
-    K_L0_values = np.full(500, 0)
-    K_L_values = np.full(500, 306)
-    zeta_d_values = np.linspace(-45, 45, 500)
+    input = pd.read_csv(filepath)
+    K_L_values = input.iloc[:,1].to_numpy()
+    K_D0_values = input.iloc[:,2].to_numpy()
+    K_D_values = input.iloc[:,3].to_numpy()
+    n = len(K_D_values)
+    K_L0_values = np.full(n, 0)
+    zeta_d_values = np.linspace(-45, 45, n)
 
     alpha_values = []
     glide_values = []
+    k_d_values = []
+    k_d0_values = []
+    k_l_values = []
 
     for kd, kd0, kl0, kl, zd in zip(K_D_values, K_D0_values, K_L0_values, K_L_values, zeta_d_values):
         substitution_dict = {
@@ -32,16 +39,22 @@ def alphaFun():
         for sol in solutions:
             numeric_sol = sol.evalf()
             if numeric_sol.is_real and abs(float(numeric_sol)) > 1:
-                glide_values.append(zd)
                 numeric_solutions.append(float(numeric_sol))
 
-        alpha_values.append(numeric_solutions)
+        # Only append glide angle and alpha values if we found valid solutions
+        if numeric_solutions:  # If the list is not empty
+            for alpha_val in numeric_solutions:
+                glide_values.append(zd)
+                k_d_values.append(kd)
+                k_d0_values.append(kd0)
+                k_l_values.append(kl)
+  # Append glide angle for each valid alpha
+            alpha_values.extend(numeric_solutions)  # Add all valid solutions to flat list
 
     glide_angle = np.array(glide_values)
-    flat_list = [item for sublist in alpha_values for item in sublist]
 
-    print(f"Found {len(flat_list)} alpha_d values.")
-    return flat_list, glide_angle
+    print(f"Found {len(alpha_values)} alpha_d values.")
+    return alpha_values, glide_angle, k_d_values, k_d0_values, k_l_values
 
 
 def MovableMassPos(alpha_d_values, glide_angle, N):
@@ -93,12 +106,16 @@ def MovableMassPos(alpha_d_values, glide_angle, N):
     print("Position values computed.")
     return position_values
 
-alpha_values, glide_angle = alphaFun()
+
+# === Run ===
+alpha_values,glide_angle,K_d,K_d0,K_l = alphaFun()
+print(len(glide_angle))
 N = len(alpha_values)
 positions = MovableMassPos(alpha_values, glide_angle, N)
 
-data = pd.DataFrame({
-    'Angle of Attack': alpha_values,
-    'Moving Mass Positions': positions
-})
+# DataFrame creation
+d = {'Glide Angle':glide_angle,'Angle of Attack': alpha_values, 'Moving Mass Positions': positions,'K_D':K_d,'K_D0':K_d0,'K_L':K_l}
+data = pd.DataFrame(d)
+data.to_csv('aoa_vs_movMassPos.csv')
+print(data)
 
